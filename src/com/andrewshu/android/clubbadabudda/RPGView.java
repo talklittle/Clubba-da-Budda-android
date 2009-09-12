@@ -13,6 +13,7 @@ import android.os.Handler;
 import android.os.Message;
 import android.util.AttributeSet;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
@@ -51,10 +52,11 @@ public class RPGView extends SurfaceView implements Callback {
         /*
          * Player action constants
          */
-        public static final int FACING_LEFT = 0;
-        public static final int FACING_RIGHT = 1;
-        public static final int FACING_DOWN = 2;
-        public static final int FACING_UP = 3;
+        public static final int DIRECTION_LEFT = 0;
+        public static final int DIRECTION_RIGHT = 1;
+        public static final int DIRECTION_DOWN = 2;
+        public static final int DIRECTION_UP = 3;
+        public static final int DIRECTION_NONE = -1;
         
         /*
          * Goal condition constants
@@ -118,12 +120,60 @@ public class RPGView extends SurfaceView implements Callback {
         /** Is the player walking? */
         private boolean mWalking;
         
+        private int mFramesPerTileX, mFramesPerTileY;
+        private int mCurrentFrame = 0;
+        private int mFramesAllowInput = 6;
+        
+        /** Increment frame and wrap to 0 */
+        private void incrementFrame() {
+        	synchronized(mSurfaceHolder) {
+	        	if (mPlayerDirection == DIRECTION_LEFT || mPlayerDirection == DIRECTION_RIGHT) {
+	        		if (mCurrentFrame + 1 >= mFramesPerTileX)
+	        			mCurrentFrame = 0;
+	        		else
+	        			mCurrentFrame++;
+	        	} else {
+	        		if (mCurrentFrame + 1 >= mFramesPerTileY)
+	        			mCurrentFrame = 0;
+	        		else
+	        			mCurrentFrame++;
+	        	}
+        	}
+        }
+        
+        /** Walk one of the 4 cardinal directions */
+        private void beginWalk() {
+        	if (mNextDirection == DIRECTION_NONE)
+        		return;
+        	// Set current direction
+        	setPlayerDirection(mNextDirection);
+        	// Unset next direction
+        	setPlayerNextDirection(DIRECTION_NONE);
+        	// Set walking to true
+        	setWalking(true);
+        }
+        
+        private void endWalk() {
+        	if (mNextDirection == DIRECTION_NONE)
+    			setWalking(false);
+    		else {
+    			setPlayerDirection(mNextDirection);
+    			setPlayerNextDirection(DIRECTION_NONE);
+    		}
+        }
+        
+        
         /** Facing which direction */
-        private int mFacingDirection;
-
+        private int mPlayerDirection = DIRECTION_DOWN;
+        /** Should the player continue motion after moving to the next tile (or whatever unit of motion)? */
+        private int mNextDirection = DIRECTION_NONE;
+        
         /** What to draw for the Lander when the engine is firing */
         private Drawable mFiringImage;
 
+        /** The player's movement speed */
+        private int mPlayerSpeed;
+        
         /** Health remaining */
         private int mHealth;
 
@@ -143,16 +193,16 @@ public class RPGView extends SurfaceView implements Callback {
         private Handler mHandler;
 
         /** Pixel height of lander image. */
-        private int mClubbaHeight;
-        private int mClubbaHalfHeight;
+        private static final int mClubbaHeight = 32;
+        private static final int mClubbaHalfHeight = 16;
 
         /** What to draw for the Lander in its normal state */
         private final Drawable[] mClubbaWalkDownImages = new Drawable[2];
         private Drawable mClubbaStandDownImage;
 
         /** Pixel width of lander image. */
-        private int mClubbaWidth;
-        private int mClubbaHalfWidth;
+        private static final int mClubbaWidth = 32;
+        private static final int mClubbaHalfWidth = 16;
 
         /** Used to figure out elapsed time between frames */
         private long mLastTime;
@@ -202,11 +252,11 @@ public class RPGView extends SurfaceView implements Callback {
             mBackgroundImage = BitmapFactory.decodeResource(res,
                     R.drawable.earthrise);
 
-            // Use the regular player image as the model size for all sprites
-            mClubbaWidth = mClubbaStandDownImage.getIntrinsicWidth();
-            mClubbaHalfWidth = mClubbaWidth / 2;
-            mClubbaHeight = mClubbaStandDownImage.getIntrinsicHeight();
-            mClubbaHalfHeight = mClubbaHeight / 2;
+//            // Use the regular player image as the model size for all sprites
+//            mClubbaWidth = mClubbaStandDownImage.getIntrinsicWidth();
+//            mClubbaHalfWidth = mClubbaWidth / 2;
+//            mClubbaHeight = mClubbaStandDownImage.getIntrinsicHeight();
+//            mClubbaHalfHeight = mClubbaHeight / 2;
 
             // Initialize paints for speedometer
             mLinePaint = new Paint();
@@ -225,6 +275,9 @@ public class RPGView extends SurfaceView implements Callback {
             // initial show-up of lander (not yet playing)
             mX = mClubbaWidth;
             mY = mClubbaHeight * 2;
+            mPlayerSpeed = 2;
+            mFramesPerTileX = mClubbaWidth / mPlayerSpeed;
+            mFramesPerTileY = mClubbaHeight / mPlayerSpeed;
             mHealth = PHYS_FUEL_INIT;
             mEngineFiring = true;
         }
@@ -256,9 +309,9 @@ public class RPGView extends SurfaceView implements Callback {
                     speedInit = speedInit * 4 / 3;
                 }
 
-                // pick a convenient initial location for the lander sprite
-                mX = mCanvasWidth / 2;
-                mY = mCanvasHeight - mClubbaHeight / 2;
+                // pick a convenient initial location for the player sprite
+                mX = (5 * mClubbaWidth) + mClubbaHalfWidth;
+                mY = (5 * mClubbaHeight) + mClubbaHalfHeight;
 
                 // Figure initial spot for landing, not too near center
                 while (true) {
@@ -297,8 +350,8 @@ public class RPGView extends SurfaceView implements Callback {
                 mX = savedState.getInt(KEY_X);
                 mY = savedState.getInt(KEY_Y);
                 
-                mClubbaWidth = savedState.getInt(KEY_LANDER_WIDTH);
-                mClubbaHeight = savedState.getInt(KEY_LANDER_HEIGHT);
+//                mClubbaWidth = savedState.getInt(KEY_LANDER_WIDTH);
+//                mClubbaHeight = savedState.getInt(KEY_LANDER_HEIGHT);
                 mGoalX = savedState.getInt(KEY_GOAL_X);
                 mGoalSpeed = savedState.getInt(KEY_GOAL_SPEED);
                 mGoalAngle = savedState.getInt(KEY_GOAL_ANGLE);
@@ -385,11 +438,20 @@ public class RPGView extends SurfaceView implements Callback {
         }
         
         /**
+         * Sets if the player should continue motion after stopping.
+         */
+        public void setPlayerNextDirection(int nextDirection) {
+        	synchronized (mSurfaceHolder) {
+                mNextDirection = nextDirection;
+            }
+        }
+        
+        /**
          * Sets the player's facing direction.
          */
         public void setPlayerDirection(int direction) {
             synchronized (mSurfaceHolder) {
-                mFacingDirection = direction;
+                mPlayerDirection = direction;
             }
         }
 
@@ -513,8 +575,6 @@ public class RPGView extends SurfaceView implements Callback {
                 if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) okStart = true;
                 if (keyCode == KeyEvent.KEYCODE_S) okStart = true;
 
-                boolean center = (keyCode == KeyEvent.KEYCODE_DPAD_UP);
-
                 if (okStart
                         && (mMode == STATE_READY || mMode == STATE_LOSE || mMode == STATE_WIN)) {
                     // ready-to-start -> start
@@ -531,28 +591,30 @@ public class RPGView extends SurfaceView implements Callback {
                         setFiring(true);
                         return true;
                         // left/a -> left
-                    } else if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT
-                            || keyCode == KeyEvent.KEYCODE_A) {
-                        setPlayerDirection(FACING_LEFT);
-                        setWalking(msg.getAction() != KeyEvent.ACTION_UP);
-                        return true;
-                        // right/s -> right
-                    } else if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
-                            || keyCode == KeyEvent.KEYCODE_S) {
-                    	setPlayerDirection(FACING_RIGHT);
-                    	setWalking(msg.getAction() != KeyEvent.ACTION_UP);
-                        return true;
-                        // up -> pause
-                    } else if (keyCode == KeyEvent.KEYCODE_DPAD_UP
-                    		|| keyCode == KeyEvent.KEYCODE_W) {
-                    	setPlayerDirection(FACING_UP);
-                    	setWalking(msg.getAction() != KeyEvent.ACTION_UP);
-                        return true;
-                    } else if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN
-                    		|| keyCode == KeyEvent.KEYCODE_Z) {
-                    	setPlayerDirection(FACING_DOWN);
-                    	setWalking(msg.getAction() != KeyEvent.ACTION_UP);
-                        return true;
+                    } else if (!mWalking) {
+                    	if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT
+                    			|| keyCode == KeyEvent.KEYCODE_A) {
+	                        setPlayerDirection(DIRECTION_LEFT);
+	                        setWalking(true);
+	                        return true;
+	                        // right/s -> right
+	                    } else if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
+	                            || keyCode == KeyEvent.KEYCODE_S) {
+	                    	setPlayerDirection(DIRECTION_RIGHT);
+	                    	setWalking(true);
+	                        return true;
+	                        // up -> pause
+	                    } else if (keyCode == KeyEvent.KEYCODE_DPAD_UP
+	                    		|| keyCode == KeyEvent.KEYCODE_W) {
+	                    	setPlayerDirection(DIRECTION_UP);
+	                    	setWalking(true);
+	                        return true;
+	                    } else if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN
+	                    		|| keyCode == KeyEvent.KEYCODE_Z) {
+	                    	setPlayerDirection(DIRECTION_DOWN);
+	                    	setWalking(true);
+	                        return true;
+	                    }
                     }
                 }
 
@@ -577,15 +639,58 @@ public class RPGView extends SurfaceView implements Callback {
                         setFiring(false);
                         handled = true;
                     } else if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT
-                            || keyCode == KeyEvent.KEYCODE_Q
+                            || keyCode == KeyEvent.KEYCODE_A
                             || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
+                            || keyCode == KeyEvent.KEYCODE_S
+                            || keyCode == KeyEvent.KEYCODE_DPAD_DOWN
+                            || keyCode == KeyEvent.KEYCODE_Z
+                            || keyCode == KeyEvent.KEYCODE_DPAD_UP
                             || keyCode == KeyEvent.KEYCODE_W) {
+                    	setWalking(false);
                         handled = true;
                     }
                 }
             }
 
             return handled;
+        }
+        
+        boolean doTrackballEvent(MotionEvent event) {
+    		synchronized (mSurfaceHolder) {
+    			float x = event.getX();
+	    		float y = event.getY();
+	    		boolean okStart = false;
+                boolean isHorizontal = ( Math.abs(x) > Math.abs(y) );
+	    		if (!isHorizontal) {
+	    			okStart = true;
+	    		}
+	    		
+                if (okStart
+                        && (mMode == STATE_READY || mMode == STATE_LOSE || mMode == STATE_WIN)) {
+                    // ready-to-start -> start
+                    doStart();
+                    return true;
+                } else if (mMode == STATE_PAUSE && okStart) {
+                    // paused -> running
+                    unpause();
+                    return true;
+                } else if (mMode == STATE_RUNNING) {
+                	if (isHorizontal && (!mWalking || mCurrentFrame >= mFramesPerTileX - mFramesAllowInput)) {
+    	        		if (x > 0) {
+    	        			setPlayerNextDirection(DIRECTION_RIGHT);
+    	        		} else if (x < 0) {
+    	        			setPlayerNextDirection(DIRECTION_LEFT);
+    	        		}
+    	    		} else if (!mWalking || mCurrentFrame >= mFramesPerTileY - mFramesAllowInput) {
+    	    			if (y > 0) {
+    	    				setPlayerNextDirection(DIRECTION_DOWN);
+    	    			} else {
+    	    				setPlayerNextDirection(DIRECTION_UP);
+    	    			}
+    	    		}
+                }
+    		}
+        	return true;
         }
 
         /**
@@ -645,10 +750,6 @@ public class RPGView extends SurfaceView implements Callback {
 
             double elapsed = (now - mLastTime) / 1000.0;
 
-            // Base accelerations -- 0 for x, gravity for y
-            double ddx = 0.0;
-            double ddy = -PHYS_DOWN_ACCEL_SEC * elapsed;
-
             if (mEngineFiring) {
                 // taking 0 as up, 90 as to the right
                 // cos(deg) is ddy component, sin(deg) is ddx component
@@ -669,34 +770,58 @@ public class RPGView extends SurfaceView implements Callback {
 
             }
             
+            // Try to proceed walking if player is in the middle of walking.
+            // TODO: This involves updating graphics
             if (mWalking) {
-            	switch (mFacingDirection) {
-            	case FACING_LEFT:
-            		if (--mX <= (mClubbaHalfWidth)) {
-            			mX = mClubbaHalfWidth;
-            			setWalking(false);
+            	int newX, newY;
+            	switch (mPlayerDirection) {
+            	case DIRECTION_LEFT:
+            		// TODO: in addition to screen borders, also check solid tiles
+            		newX = mX - mPlayerSpeed;
+            		if (newX <= (mClubbaHalfWidth)) {
+            			mCurrentFrame = 0;
+            		} else {
+            			// Increment motion frame. (Animation frame is different.)
+                    	incrementFrame();
+                    	mX = newX;
             		}
             		break;
-            	case FACING_RIGHT:
-            		if (++mX >= (480 - mClubbaHalfWidth)) {
-            			mX = 480 - mClubbaHalfWidth;
-            			setWalking(false);
+            	case DIRECTION_RIGHT:
+            		newX = mX + mPlayerSpeed;
+            		if (newX >= (480 - mClubbaHalfWidth)) {
+            			mCurrentFrame = 0;
+            		} else {
+            			incrementFrame();
+                    	mX = newX;
             		}
             		break;
-            	case FACING_DOWN:
-            		if (--mY <= (mClubbaHalfHeight)) {
-            			mY = mClubbaHalfHeight;
-            			setWalking(false);
+            	case DIRECTION_DOWN:
+            		newY = mY - mPlayerSpeed;
+            		if (newY <= (mClubbaHalfHeight)) {
+            			mCurrentFrame = 0;
+            		} else {
+            			incrementFrame();
+                    	mY = newY;
             		}
             		break;
-            	case FACING_UP:
-            		if (++mY >= (320 - mClubbaHalfHeight)) {
-            			mY = 320 - mClubbaHalfHeight;
-            			setWalking(false);
+            	case DIRECTION_UP:
+            		newY = mY + mPlayerSpeed;
+            		if (newY >= (320 - mClubbaHalfHeight)) {
+            			mCurrentFrame = 0;
+            		} else {
+            			incrementFrame();
+                    	mY = newY;
             		}
             		break;
             	}
+            	
+            	if (mCurrentFrame == 0) {
+            		endWalk();
+            	}
+            } else {
+            	beginWalk();
             }
+            
 
             mLastTime = now;
 
@@ -781,12 +906,16 @@ public class RPGView extends SurfaceView implements Callback {
     }
 
     /**
-     * Standard override for key-up. We actually care about these, so we can
-     * turn off the engine or stop rotating.
+     * Standard override for key-up.
      */
     @Override
     public boolean onKeyUp(int keyCode, KeyEvent msg) {
         return thread.doKeyUp(keyCode, msg);
+    }
+    
+    @Override
+    public boolean onTrackballEvent(MotionEvent event) {
+    	return thread.doTrackballEvent(event);
     }
 
     /**
