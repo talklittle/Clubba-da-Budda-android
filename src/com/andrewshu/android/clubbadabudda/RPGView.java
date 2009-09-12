@@ -13,7 +13,6 @@ import android.os.Handler;
 import android.os.Message;
 import android.util.AttributeSet;
 import android.view.KeyEvent;
-import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
@@ -122,7 +121,7 @@ public class RPGView extends SurfaceView implements Callback {
         
         private int mFramesPerTileX, mFramesPerTileY;
         private int mCurrentFrame = 0;
-        private int mFramesAllowInput = 6;
+        private int mFramesAllowInput = 8;
         
         /** Increment frame and wrap to 0 */
         private void incrementFrame() {
@@ -590,31 +589,30 @@ public class RPGView extends SurfaceView implements Callback {
                             || keyCode == KeyEvent.KEYCODE_SPACE) {
                         setFiring(true);
                         return true;
-                        // left/a -> left
-                    } else if (!mWalking) {
-                    	if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT
-                    			|| keyCode == KeyEvent.KEYCODE_A) {
-	                        setPlayerDirection(DIRECTION_LEFT);
-	                        setWalking(true);
-	                        return true;
-	                        // right/s -> right
-	                    } else if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
-	                            || keyCode == KeyEvent.KEYCODE_S) {
-	                    	setPlayerDirection(DIRECTION_RIGHT);
-	                    	setWalking(true);
-	                        return true;
-	                        // up -> pause
-	                    } else if (keyCode == KeyEvent.KEYCODE_DPAD_UP
-	                    		|| keyCode == KeyEvent.KEYCODE_W) {
-	                    	setPlayerDirection(DIRECTION_UP);
-	                    	setWalking(true);
-	                        return true;
-	                    } else if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN
-	                    		|| keyCode == KeyEvent.KEYCODE_Z) {
-	                    	setPlayerDirection(DIRECTION_DOWN);
-	                    	setWalking(true);
-	                        return true;
-	                    }
+                    // left/a -> left
+                    } else if ((keyCode == KeyEvent.KEYCODE_DPAD_LEFT
+                    		|| keyCode == KeyEvent.KEYCODE_A)
+                    		&& (!mWalking || mCurrentFrame >= mFramesPerTileX - mFramesAllowInput)) { 
+                    	setPlayerNextDirection(DIRECTION_LEFT);
+                    	return true;
+                    // right/s -> right
+                    } else if ((keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
+                            || keyCode == KeyEvent.KEYCODE_S)
+                            && (!mWalking || mCurrentFrame >= mFramesPerTileX - mFramesAllowInput)) {
+                    	setPlayerNextDirection(DIRECTION_RIGHT);
+                        return true;
+                    // up/w -> up
+                    } else if ((keyCode == KeyEvent.KEYCODE_DPAD_UP
+                    		|| keyCode == KeyEvent.KEYCODE_W)
+                    		&& (!mWalking || mCurrentFrame >= mFramesPerTileY - mFramesAllowInput)) {
+                    	setPlayerNextDirection(DIRECTION_UP);
+                        return true;
+                    // down/z -> down
+                    } else if ((keyCode == KeyEvent.KEYCODE_DPAD_DOWN
+                    		|| keyCode == KeyEvent.KEYCODE_Z)
+                    		&& (!mWalking || mCurrentFrame >= mFramesPerTileY - mFramesAllowInput)) {
+                    	setPlayerNextDirection(DIRECTION_DOWN);
+                        return true;
                     }
                 }
 
@@ -638,16 +636,6 @@ public class RPGView extends SurfaceView implements Callback {
                             || keyCode == KeyEvent.KEYCODE_SPACE) {
                         setFiring(false);
                         handled = true;
-                    } else if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT
-                            || keyCode == KeyEvent.KEYCODE_A
-                            || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
-                            || keyCode == KeyEvent.KEYCODE_S
-                            || keyCode == KeyEvent.KEYCODE_DPAD_DOWN
-                            || keyCode == KeyEvent.KEYCODE_Z
-                            || keyCode == KeyEvent.KEYCODE_DPAD_UP
-                            || keyCode == KeyEvent.KEYCODE_W) {
-                    	setWalking(false);
-                        handled = true;
                     }
                 }
             }
@@ -655,44 +643,6 @@ public class RPGView extends SurfaceView implements Callback {
             return handled;
         }
         
-        boolean doTrackballEvent(MotionEvent event) {
-    		synchronized (mSurfaceHolder) {
-    			float x = event.getX();
-	    		float y = event.getY();
-	    		boolean okStart = false;
-                boolean isHorizontal = ( Math.abs(x) > Math.abs(y) );
-	    		if (!isHorizontal) {
-	    			okStart = true;
-	    		}
-	    		
-                if (okStart
-                        && (mMode == STATE_READY || mMode == STATE_LOSE || mMode == STATE_WIN)) {
-                    // ready-to-start -> start
-                    doStart();
-                    return true;
-                } else if (mMode == STATE_PAUSE && okStart) {
-                    // paused -> running
-                    unpause();
-                    return true;
-                } else if (mMode == STATE_RUNNING) {
-                	if (isHorizontal && (!mWalking || mCurrentFrame >= mFramesPerTileX - mFramesAllowInput)) {
-    	        		if (x > 0) {
-    	        			setPlayerNextDirection(DIRECTION_RIGHT);
-    	        		} else if (x < 0) {
-    	        			setPlayerNextDirection(DIRECTION_LEFT);
-    	        		}
-    	    		} else if (!mWalking || mCurrentFrame >= mFramesPerTileY - mFramesAllowInput) {
-    	    			if (y > 0) {
-    	    				setPlayerNextDirection(DIRECTION_DOWN);
-    	    			} else {
-    	    				setPlayerNextDirection(DIRECTION_UP);
-    	    			}
-    	    		}
-                }
-    		}
-        	return true;
-        }
-
         /**
          * Draws the ship, fuel/speed bars, and background to the provided
          * Canvas.
@@ -913,11 +863,6 @@ public class RPGView extends SurfaceView implements Callback {
         return thread.doKeyUp(keyCode, msg);
     }
     
-    @Override
-    public boolean onTrackballEvent(MotionEvent event) {
-    	return thread.doTrackballEvent(event);
-    }
-
     /**
      * Standard window-focus override. Notice focus lost so we can pause on
      * focus lost. e.g. user switches to take a call.
