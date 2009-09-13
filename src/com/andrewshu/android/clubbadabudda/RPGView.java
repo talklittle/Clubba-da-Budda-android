@@ -119,24 +119,36 @@ public class RPGView extends SurfaceView implements Callback {
         /** Is the player walking? */
         private boolean mWalking;
         
+        private int mCurrentAnimationFrame = 0;
+        private int mAnimationFrameCount;
+        private long mElapsedAnimationMillis = 0;
+        private static final long MILLIS_PER_ANIMATION_FRAME = 300;
+        
         private int mFramesPerTileX, mFramesPerTileY;
-        private int mCurrentFrame = 0;
+        private int mCurrentMotionFrame = 0;
         private int mFramesAllowInput = 8;
         
-        /** Increment frame and wrap to 0 */
-        private void incrementFrame() {
+        /** Increment motion frame and wrap to 0 */
+        private void incrementMotionFrame() {
         	synchronized(mSurfaceHolder) {
 	        	if (mPlayerDirection == DIRECTION_LEFT || mPlayerDirection == DIRECTION_RIGHT) {
-	        		if (mCurrentFrame + 1 >= mFramesPerTileX)
-	        			mCurrentFrame = 0;
+	        		if (mCurrentMotionFrame + 1 >= mFramesPerTileX)
+	        			mCurrentMotionFrame = 0;
 	        		else
-	        			mCurrentFrame++;
+	        			mCurrentMotionFrame++;
 	        	} else {
-	        		if (mCurrentFrame + 1 >= mFramesPerTileY)
-	        			mCurrentFrame = 0;
+	        		if (mCurrentMotionFrame + 1 >= mFramesPerTileY)
+	        			mCurrentMotionFrame = 0;
 	        		else
-	        			mCurrentFrame++;
+	        			mCurrentMotionFrame++;
 	        	}
+        	}
+        }
+        /** Increment animation frame and wrap to 0 */
+        private void incrementAnimationFrame() {
+        	synchronized(mSurfaceHolder) {
+	        	if (++mCurrentAnimationFrame >= mAnimationFrameCount)
+	        		mCurrentAnimationFrame = 0;
         	}
         }
         
@@ -153,10 +165,15 @@ public class RPGView extends SurfaceView implements Callback {
         }
         
         private void endWalk() {
-        	if (mNextDirection == DIRECTION_NONE)
+        	if (mNextDirection == DIRECTION_NONE) {
     			setWalking(false);
-    		else {
+    			setAnimationImages(mClubbaStandingImages[mPlayerDirection], false);
+        	} else {
+            	// Set current direction
     			setPlayerDirection(mNextDirection);
+            	// Set animation
+            	setAnimationImages(mClubbaWalkingImages[mPlayerDirection], false);
+            	// Unset next direction
     			setPlayerNextDirection(DIRECTION_NONE);
     		}
         }
@@ -191,18 +208,33 @@ public class RPGView extends SurfaceView implements Callback {
         /** Message handler used by thread to interact with TextView */
         private Handler mHandler;
 
-        /** Pixel height of lander image. */
-        private static final int mClubbaHeight = 32;
-        private static final int mClubbaHalfHeight = 16;
+        /** Pixel height of player image. */
+        private static final int CLUBBA_HEIGHT = 32;
+        private static final int CLUBBA_HALF_HEIGHT = 16;
 
-        /** What to draw for the Lander in its normal state */
+        /** Pixel width of player image. */
+        private static final int CLUBBA_WIDTH = 32;
+        private static final int CLUBBA_HALF_WIDTH = 16;
+
+        /** Images to cycle through for animation loop */
+        private Drawable[] mCurrentAnimationImages;
+        // FIXME: Left, right, up
+        private final Drawable[] mClubbaWalkLeftImages = new Drawable[2];
+        private final Drawable[] mClubbaWalkRightImages = new Drawable[2];
         private final Drawable[] mClubbaWalkDownImages = new Drawable[2];
-        private Drawable mClubbaStandDownImage;
-
-        /** Pixel width of lander image. */
-        private static final int mClubbaWidth = 32;
-        private static final int mClubbaHalfWidth = 16;
-
+        private final Drawable[] mClubbaWalkUpImages = new Drawable[2];
+        private final Drawable[][] mClubbaWalkingImages = new Drawable[][] {
+        		mClubbaWalkLeftImages, mClubbaWalkRightImages, mClubbaWalkDownImages, mClubbaWalkUpImages
+        		};
+        // FIXME: left, right, up
+        private final Drawable[] mClubbaStandLeftImages = new Drawable[1];
+        private final Drawable[] mClubbaStandRightImages = new Drawable[1];
+        private final Drawable[] mClubbaStandDownImages = new Drawable[1];
+        private final Drawable[] mClubbaStandUpImages = new Drawable[1];
+        private final Drawable[][] mClubbaStandingImages = new Drawable[][] {
+        		mClubbaStandLeftImages, mClubbaStandRightImages, mClubbaStandDownImages, mClubbaStandUpImages
+        		};
+        
         /** Used to figure out elapsed time between frames */
         private long mLastTime;
 
@@ -242,9 +274,22 @@ public class RPGView extends SurfaceView implements Callback {
 
             Resources res = context.getResources();
             // cache handles to our key sprites & other drawables
+            // FIXME: left, right, up
+            mClubbaWalkLeftImages[0] = context.getResources().getDrawable(R.drawable.clubba_walk_down1);
+            mClubbaWalkLeftImages[1] = context.getResources().getDrawable(R.drawable.clubba_walk_down2);
+            mClubbaWalkRightImages[0] = context.getResources().getDrawable(R.drawable.clubba_walk_down1);
+            mClubbaWalkRightImages[1] = context.getResources().getDrawable(R.drawable.clubba_walk_down2);
             mClubbaWalkDownImages[0] = context.getResources().getDrawable(R.drawable.clubba_walk_down1);
             mClubbaWalkDownImages[1] = context.getResources().getDrawable(R.drawable.clubba_walk_down2);
-            mClubbaStandDownImage = context.getResources().getDrawable(R.drawable.clubba_walk_down2); 
+            mClubbaWalkUpImages[0] = context.getResources().getDrawable(R.drawable.clubba_walk_down1);
+            mClubbaWalkUpImages[1] = context.getResources().getDrawable(R.drawable.clubba_walk_down2);
+            mClubbaStandLeftImages[0] = context.getResources().getDrawable(R.drawable.clubba_stand_down); 
+            mClubbaStandRightImages[0] = context.getResources().getDrawable(R.drawable.clubba_stand_down); 
+            mClubbaStandDownImages[0] = context.getResources().getDrawable(R.drawable.clubba_stand_down); 
+            mClubbaStandUpImages[0] = context.getResources().getDrawable(R.drawable.clubba_stand_down); 
+            
+            // Set initial animation to standing, facing down.
+            setAnimationImages(mClubbaStandDownImages, true);
             
             // load background image as a Bitmap instead of a Drawable b/c
             // we don't need to transform it and it's faster to draw this way
@@ -272,11 +317,11 @@ public class RPGView extends SurfaceView implements Callback {
             mDifficulty = DIFFICULTY_MEDIUM;
 
             // initial show-up of lander (not yet playing)
-            mX = mClubbaWidth;
-            mY = mClubbaHeight * 2;
+            mX = CLUBBA_WIDTH;
+            mY = CLUBBA_HEIGHT * 2;
             mPlayerSpeed = 2;
-            mFramesPerTileX = mClubbaWidth / mPlayerSpeed;
-            mFramesPerTileY = mClubbaHeight / mPlayerSpeed;
+            mFramesPerTileX = CLUBBA_WIDTH / mPlayerSpeed;
+            mFramesPerTileY = CLUBBA_HEIGHT / mPlayerSpeed;
             mHealth = PHYS_FUEL_INIT;
             mEngineFiring = true;
         }
@@ -289,7 +334,7 @@ public class RPGView extends SurfaceView implements Callback {
                 // First set the game for Medium difficulty
                 mHealth = PHYS_FUEL_INIT;
                 mEngineFiring = false;
-                mGoalWidth = (int) (mClubbaWidth * TARGET_WIDTH);
+                mGoalWidth = (int) (CLUBBA_WIDTH * TARGET_WIDTH);
                 mGoalSpeed = TARGET_SPEED;
                 mGoalAngle = TARGET_ANGLE;
                 int speedInit = PHYS_SPEED_INIT;
@@ -309,13 +354,13 @@ public class RPGView extends SurfaceView implements Callback {
                 }
 
                 // pick a convenient initial location for the player sprite
-                mX = (5 * mClubbaWidth) + mClubbaHalfWidth;
-                mY = (5 * mClubbaHeight) + mClubbaHalfHeight;
+                mX = (5 * CLUBBA_WIDTH) + CLUBBA_HALF_WIDTH;
+                mY = (5 * CLUBBA_HEIGHT) + CLUBBA_HALF_HEIGHT;
 
                 // Figure initial spot for landing, not too near center
                 while (true) {
                     mGoalX = (int) (Math.random() * (mCanvasWidth - mGoalWidth));
-                    if (Math.abs(mGoalX - (mX - mClubbaWidth / 2)) > mCanvasHeight / 6)
+                    if (Math.abs(mGoalX - (mX - CLUBBA_WIDTH / 2)) > mCanvasHeight / 6)
                         break;
                 }
 
@@ -393,9 +438,9 @@ public class RPGView extends SurfaceView implements Callback {
                     map.putInt(KEY_DIFFICULTY, Integer.valueOf(mDifficulty));
                     map.putInt(KEY_X, Integer.valueOf(mX));
                     map.putInt(KEY_Y, Integer.valueOf(mY));
-                    map.putInt(KEY_LANDER_WIDTH, Integer.valueOf(mClubbaWidth));
+                    map.putInt(KEY_LANDER_WIDTH, Integer.valueOf(CLUBBA_WIDTH));
                     map.putInt(KEY_LANDER_HEIGHT, Integer
-                            .valueOf(mClubbaHeight));
+                            .valueOf(CLUBBA_HEIGHT));
                     map.putInt(KEY_GOAL_X, Integer.valueOf(mGoalX));
                     map.putInt(KEY_GOAL_SPEED, Integer.valueOf(mGoalSpeed));
                     map.putInt(KEY_GOAL_ANGLE, Integer.valueOf(mGoalAngle));
@@ -433,6 +478,7 @@ public class RPGView extends SurfaceView implements Callback {
         public void setWalking(boolean walking) {
             synchronized (mSurfaceHolder) {
                 mWalking = walking;
+                mCurrentAnimationImages = mClubbaWalkingImages[mPlayerDirection];
             }
         }
         
@@ -450,7 +496,20 @@ public class RPGView extends SurfaceView implements Callback {
          */
         public void setPlayerDirection(int direction) {
             synchronized (mSurfaceHolder) {
-                mPlayerDirection = direction;
+               	mPlayerDirection = direction;
+            }
+        }
+        
+        /**
+         * Sets the player's animation.
+         */
+        public void setAnimationImages(Drawable[] images, boolean mustReset) {
+        	synchronized (mSurfaceHolder) {
+        		int newLength = images.length;
+               	mCurrentAnimationImages = images;
+               	mAnimationFrameCount = newLength;
+               	if (mustReset || (mCurrentAnimationFrame >= newLength))
+               		mCurrentAnimationFrame = 0;
             }
         }
 
@@ -592,25 +651,25 @@ public class RPGView extends SurfaceView implements Callback {
                     // left/a -> left
                     } else if ((keyCode == KeyEvent.KEYCODE_DPAD_LEFT
                     		|| keyCode == KeyEvent.KEYCODE_A)
-                    		&& (!mWalking || mCurrentFrame >= mFramesPerTileX - mFramesAllowInput)) { 
+                    		&& (!mWalking || mCurrentMotionFrame >= mFramesPerTileX - mFramesAllowInput)) { 
                     	setPlayerNextDirection(DIRECTION_LEFT);
                     	return true;
                     // right/s -> right
                     } else if ((keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
                             || keyCode == KeyEvent.KEYCODE_S)
-                            && (!mWalking || mCurrentFrame >= mFramesPerTileX - mFramesAllowInput)) {
+                            && (!mWalking || mCurrentMotionFrame >= mFramesPerTileX - mFramesAllowInput)) {
                     	setPlayerNextDirection(DIRECTION_RIGHT);
                         return true;
                     // up/w -> up
                     } else if ((keyCode == KeyEvent.KEYCODE_DPAD_UP
                     		|| keyCode == KeyEvent.KEYCODE_W)
-                    		&& (!mWalking || mCurrentFrame >= mFramesPerTileY - mFramesAllowInput)) {
+                    		&& (!mWalking || mCurrentMotionFrame >= mFramesPerTileY - mFramesAllowInput)) {
                     	setPlayerNextDirection(DIRECTION_UP);
                         return true;
                     // down/z -> down
                     } else if ((keyCode == KeyEvent.KEYCODE_DPAD_DOWN
                     		|| keyCode == KeyEvent.KEYCODE_Z)
-                    		&& (!mWalking || mCurrentFrame >= mFramesPerTileY - mFramesAllowInput)) {
+                    		&& (!mWalking || mCurrentMotionFrame >= mFramesPerTileY - mFramesAllowInput)) {
                     	setPlayerNextDirection(DIRECTION_DOWN);
                         return true;
                     }
@@ -652,8 +711,8 @@ public class RPGView extends SurfaceView implements Callback {
             // so this is like clearing the screen.
             canvas.drawBitmap(mBackgroundImage, 0, 0, null);
 
-            int yTop = mCanvasHeight - (mY + mClubbaHeight / 2);
-            int xLeft = mX - mClubbaWidth / 2;
+            int yTop = mCanvasHeight - (mY + CLUBBA_HEIGHT / 2);
+            int xLeft = mX - CLUBBA_WIDTH / 2;
 
             // Draw the fuel gauge
             int fuelWidth = (int) (UI_BAR * mHealth / PHYS_FUEL_MAX);
@@ -669,18 +728,18 @@ public class RPGView extends SurfaceView implements Callback {
             // Draw the ship with its current rotation
             canvas.save();
             if (mMode == STATE_LOSE) {
-                mCrashedImage.setBounds(xLeft, yTop, xLeft + mClubbaWidth, yTop
-                        + mClubbaHeight);
+                mCrashedImage.setBounds(xLeft, yTop, xLeft + CLUBBA_WIDTH, yTop
+                        + CLUBBA_HEIGHT);
                 mCrashedImage.draw(canvas);
             } else if (mEngineFiring) {
-                mFiringImage.setBounds(xLeft, yTop, xLeft + mClubbaWidth, yTop
-                        + mClubbaHeight);
+                mFiringImage.setBounds(xLeft, yTop, xLeft + CLUBBA_WIDTH, yTop
+                        + CLUBBA_HEIGHT);
                 mFiringImage.draw(canvas);
             } else {
             	// FIXME: Fix direction
-                mClubbaStandDownImage.setBounds(xLeft, yTop, xLeft + mClubbaWidth, yTop
-                        + mClubbaHeight);
-                mClubbaStandDownImage.draw(canvas);
+            	Drawable currentAnimationImage = mCurrentAnimationImages[mCurrentAnimationFrame];
+                currentAnimationImage.setBounds(xLeft, yTop, xLeft + CLUBBA_WIDTH, yTop + CLUBBA_HEIGHT);
+                currentAnimationImage.draw(canvas);
             }
             canvas.restore();
         }
@@ -698,27 +757,36 @@ public class RPGView extends SurfaceView implements Callback {
             // by 100ms or whatever.
             if (mLastTime > now) return;
 
-            double elapsed = (now - mLastTime) / 1000.0;
-
-            if (mEngineFiring) {
-                // taking 0 as up, 90 as to the right
-                // cos(deg) is ddy component, sin(deg) is ddx component
-                double elapsedFiring = elapsed;
-                double fuelUsed = elapsedFiring * PHYS_FUEL_SEC;
-
-                // tricky case where we run out of fuel partway through the
-                // elapsed
-                if (fuelUsed > mHealth) {
-                    elapsedFiring = mHealth / fuelUsed * elapsed;
-                    fuelUsed = mHealth;
-
-                    // Oddball case where we adjust the "control" from here
-                    mEngineFiring = false;
-                }
-
-                mHealth -= fuelUsed;
-
+            // XXX: Should this be here in updatePhysics() or in doDraw() above?
+            long elapsedAnimationMillis = mElapsedAnimationMillis + (now - mLastTime);
+            if (elapsedAnimationMillis >= MILLIS_PER_ANIMATION_FRAME) {
+            	incrementAnimationFrame();
+            	mElapsedAnimationMillis = 0;
+            } else {
+            	mElapsedAnimationMillis = elapsedAnimationMillis;
             }
+            
+//            double elapsed = (now - mLastTime) / 1000.0;
+//
+//            if (mEngineFiring) {
+//                // taking 0 as up, 90 as to the right
+//                // cos(deg) is ddy component, sin(deg) is ddx component
+//                double elapsedFiring = elapsed;
+//                double fuelUsed = elapsedFiring * PHYS_FUEL_SEC;
+//
+//                // tricky case where we run out of fuel partway through the
+//                // elapsed
+//                if (fuelUsed > mHealth) {
+//                    elapsedFiring = mHealth / fuelUsed * elapsed;
+//                    fuelUsed = mHealth;
+//
+//                    // Oddball case where we adjust the "control" from here
+//                    mEngineFiring = false;
+//                }
+//
+//                mHealth -= fuelUsed;
+//
+//            }
             
             // Try to proceed walking if player is in the middle of walking.
             // TODO: This involves updating graphics
@@ -728,44 +796,43 @@ public class RPGView extends SurfaceView implements Callback {
             	case DIRECTION_LEFT:
             		// TODO: in addition to screen borders, also check solid tiles
             		newX = mX - mPlayerSpeed;
-            		if (newX <= (mClubbaHalfWidth)) {
-            			mCurrentFrame = 0;
+            		if (newX <= (CLUBBA_HALF_WIDTH)) {
+            			mCurrentMotionFrame = 0;
             		} else {
-            			// Increment motion frame. (Animation frame is different.)
-                    	incrementFrame();
+            			incrementMotionFrame();
                     	mX = newX;
             		}
             		break;
             	case DIRECTION_RIGHT:
             		newX = mX + mPlayerSpeed;
-            		if (newX >= (480 - mClubbaHalfWidth)) {
-            			mCurrentFrame = 0;
+            		if (newX >= (480 - CLUBBA_HALF_WIDTH)) {
+            			mCurrentMotionFrame = 0;
             		} else {
-            			incrementFrame();
+            			incrementMotionFrame();
                     	mX = newX;
             		}
             		break;
             	case DIRECTION_DOWN:
             		newY = mY - mPlayerSpeed;
-            		if (newY <= (mClubbaHalfHeight)) {
-            			mCurrentFrame = 0;
+            		if (newY <= (CLUBBA_HALF_HEIGHT)) {
+            			mCurrentMotionFrame = 0;
             		} else {
-            			incrementFrame();
+            			incrementMotionFrame();
                     	mY = newY;
             		}
             		break;
             	case DIRECTION_UP:
             		newY = mY + mPlayerSpeed;
-            		if (newY >= (320 - mClubbaHalfHeight)) {
-            			mCurrentFrame = 0;
+            		if (newY >= (320 - CLUBBA_HALF_HEIGHT)) {
+            			mCurrentMotionFrame = 0;
             		} else {
-            			incrementFrame();
+            			incrementMotionFrame();
                     	mY = newY;
             		}
             		break;
             	}
             	
-            	if (mCurrentFrame == 0) {
+            	if (mCurrentMotionFrame == 0) {
             		endWalk();
             	}
             } else {
